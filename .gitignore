@@ -1,0 +1,28 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+
+# VS Code / IDE
+.vscode/
+.idea/
+
+# Python tooling
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+
+# Byte-compiled / cache
+*.log
+
+# Environment
+.env
+.env.*
+
+# Docker
+*.pid
+
