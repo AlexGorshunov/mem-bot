@@ -10,7 +10,7 @@ from .mem_client import MemClient
 from .state import USER_PENDING_NOTES, PendingNote
 from .voice_utils import transcribe_audio
 from .pdf_utils import extract_pdf_text
-from .tags import format_tags_help
+from .tags import format_tags_help, add_or_update_tag
 
 
 abacus_client = AbacusClient()
@@ -63,6 +63,47 @@ async def show_tags(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     assert update.message is not None
     await update.message.reply_text(format_tags_help())
+
+
+async def add_tag_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    /addtag <имя_тега> <описание>
+    Пример:
+      /addtag arxiv Статьи с arXiv по ML и ИИ
+    """
+    if not _is_authorized(update):
+        assert update.message is not None
+        await update.message.reply_text("Ты не мой создатель, я тебя не знаю и не дружу с тобой!")
+        return
+
+    assert update.message is not None
+    text = update.message.text or ""
+
+    # Ожидаем как минимум три части: /addtag, имя, описание
+    parts = text.split(maxsplit=2)
+    if len(parts) < 3:
+        await update.message.reply_text(
+            "Использование: /addtag <имя_тега> <описание>\n"
+            "Пример: /addtag arxiv Статьи с arXiv по ML и ИИ"
+        )
+        return
+
+    _, raw_name, description = parts
+    name = raw_name.lstrip("#").strip()
+    description = description.strip()
+
+    if not name or not description:
+        await update.message.reply_text(
+            "Имя тега и описание не должны быть пустыми.\n"
+            "Пример: /addtag arxiv Статьи с arXiv по ML и ИИ"
+        )
+        return
+
+    add_or_update_tag(name, description)
+    await update.message.reply_text(
+        f"Тег добавлен/обновлён: #{name}\n"
+        "Он теперь будет отображаться в списке /tags."
+    )
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:

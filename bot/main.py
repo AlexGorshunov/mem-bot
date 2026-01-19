@@ -30,6 +30,7 @@ def main() -> None:
 
     application.add_handler(CommandHandler("start", handlers.start))
     application.add_handler(CommandHandler("tags", handlers.show_tags))
+    application.add_handler(CommandHandler("addtag", handlers.add_tag_command))
 
     # Фото
     application.add_handler(
