@@ -10,6 +10,7 @@ from .mem_client import MemClient
 from .state import USER_PENDING_NOTES, PendingNote
 from .voice_utils import transcribe_audio
 from .pdf_utils import extract_pdf_text
+from .tags import format_tags_help
 
 
 abacus_client = AbacusClient()
@@ -48,9 +49,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
     await update.message.reply_text(
         "Привет! Я бот, который сохраняет твои мысли в Mem.ai.\n\n"
-        "Отправь текст, голосовое или фото — я сохраню заметку, "
-        "а затем попрошу тебя прислать теги."
+        "Отправь текст, голосовое, фото или PDF — я сохраню заметку.\n"
+        "Теги можешь добавлять прямо в сообщение (например: #petproject #ai).\n"
+        "Команда /tags покажет все известные теги с описанием."
     )
+
+
+async def show_tags(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_authorized(update):
+        assert update.message is not None
+        await update.message.reply_text("Ты не мой создатель, я тебя не знаю и не дружу с тобой!")
+        return
+
+    assert update.message is not None
+    await update.message.reply_text(format_tags_help())
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -60,29 +72,18 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         return
 
     assert update.message is not None
-    user_id = update.effective_user.id
     text = update.message.text or ""
-
-    # Если для пользователя уже есть ожидающая заметка — воспринимаем текст как теги
-    if user_id in USER_PENDING_NOTES:
-        await handle_tags(update, context)
-        return
 
     await update.message.reply_text("Обрабатываю текст через Abacus LLM...")
     expanded = await abacus_client.expand_text(text)
 
+    # Теги ты можешь указывать прямо в сообщении, они останутся в тексте.
     mem_content = expanded
     mem_resp = await mem_client.create_note(mem_content)
-    note_id = mem_resp.get("id") or mem_resp.get("noteId") or ""
-
-    USER_PENDING_NOTES[user_id] = PendingNote(
-        note_id=note_id,
-        original_content=mem_content,
-    )
 
     await update.message.reply_text(
         "Записал мысль в Mem.ai.\n"
-        "Теперь отправь сообщение с тегами (через запятую, можно с `#`)."
+        "Теги можно указывать прямо в тексте сообщения (например: #project, #idea)."
     )
 
 
@@ -93,7 +94,6 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     assert update.message is not None
-    user_id = update.effective_user.id
     voice = update.message.voice or update.message.audio
 
     if not voice:
@@ -108,18 +108,13 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     transcript = await transcribe_audio(file_path)
 
     # При желании можно также прогнать transcript через Abacus; пока отправим как есть
+    # Теги при желании можно проговаривать/обозначать в конце, но они просто попадут в текст.
     mem_content = transcript
     mem_resp = await mem_client.create_note(mem_content)
-    note_id = mem_resp.get("id") or mem_resp.get("noteId") or ""
-
-    USER_PENDING_NOTES[user_id] = PendingNote(
-        note_id=note_id,
-        original_content=mem_content,
-    )
 
     await update.message.reply_text(
-        "Голосовое сохранено в Mem.ai.\n"
-        "Теперь отправь сообщение с тегами для этой заметки."
+        "Голосовое (текст) сохранено в Mem.ai.\n"
+        "Если хочешь теги, просто включай их в содержание (например: #meeting, #voice)."
     )
 
 
@@ -130,7 +125,6 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     assert update.message is not None
-    user_id = update.effective_user.id
 
     if not update.message.photo:
         await update.message.reply_text("Не удалось получить фото.")
@@ -141,18 +135,13 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     file_url = file.file_path  # Телеграмовская ссылка на файл
     caption = update.message.caption or ""
 
+    # Теги можешь указать прямо в caption.
     mem_content = f"Фото: {file_url}\n\n{caption}".strip()
     mem_resp = await mem_client.create_note(mem_content)
-    note_id = mem_resp.get("id") or mem_resp.get("noteId") or ""
-
-    USER_PENDING_NOTES[user_id] = PendingNote(
-        note_id=note_id,
-        original_content=mem_content,
-    )
 
     await update.message.reply_text(
         "Фото сохранено в Mem.ai.\n"
-        "Теперь отправь сообщение с тегами для этой заметки."
+        "Можешь добавлять теги прямо в подпись к фото."
     )
 
 
@@ -167,7 +156,6 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         return
 
     assert update.message is not None
-    user_id = update.effective_user.id
 
     doc = update.message.document
     if not doc:
@@ -187,43 +175,18 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
 
     summarized = await abacus_client.summarize_pdf(raw_text, target_lang="ru")
 
+    # В итоговой заметке можешь сразу добавить теги в тексте, если нужно.
     mem_content = summarized
     mem_resp = await mem_client.create_note(mem_content)
-    note_id = mem_resp.get("id") or mem_resp.get("noteId") or ""
-
-    USER_PENDING_NOTES[user_id] = PendingNote(
-        note_id=note_id,
-        original_content=mem_content,
-    )
 
     await update.message.reply_text(
         "Создал заметку по PDF в Mem.ai.\n"
-        "Теперь отправь сообщение с тегами для этой заметки."
+        "Теги можешь включать прямо в текст PDF (или добавить в следующем документе/сообщении)."
     )
 
 
 async def handle_tags(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    assert update.message is not None
-    user_id = update.effective_user.id
-    text = update.message.text or ""
-
-    pending = USER_PENDING_NOTES.get(user_id)
-    if not pending:
-        await update.message.reply_text(
-            "Сначала отправь текст, голосовое или фото, чтобы я создал заметку."
-        )
-        return
-
-    tags = _parse_tags(text)
-    tags_str = ", ".join(f"#{t}" for t in tags) if tags else text.strip()
-
-    new_content = f"{pending.original_content}\n\nТеги: {tags_str}".strip()
-
-    await update.message.reply_text("Добавляю теги к заметке в Mem.ai...")
-    await mem_client.update_note_content(pending.note_id, new_content)
-
-    USER_PENDING_NOTES.pop(user_id, None)
-
-    await update.message.reply_text("Готово! Теги добавлены. Можешь отправить следующую мысль.")
+    # Функция больше не используется: теги указываются прямо в сообщении.
+    return
 
 

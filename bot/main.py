@@ -29,6 +29,7 @@ def main() -> None:
     application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", handlers.start))
+    application.add_handler(CommandHandler("tags", handlers.show_tags))
 
     # Фото
     application.add_handler(
