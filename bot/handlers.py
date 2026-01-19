@@ -9,6 +9,7 @@ from .abacus_client import AbacusClient
 from .mem_client import MemClient
 from .state import USER_PENDING_NOTES, PendingNote
 from .voice_utils import transcribe_audio
+from .pdf_utils import extract_pdf_text
 
 
 abacus_client = AbacusClient()
@@ -122,6 +123,47 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     await update.message.reply_text(
         "Фото сохранено в Mem.ai.\n"
+        "Теперь отправь сообщение с тегами для этой заметки."
+    )
+
+
+async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """
+    Обработка PDF: скачиваем, вытаскиваем текст, просим LLM перевести и объяснить,
+    создаём заметку в Mem и затем просим теги.
+    """
+    assert update.message is not None
+    user_id = update.effective_user.id
+
+    doc = update.message.document
+    if not doc:
+        await update.message.reply_text("Не удалось получить документ.")
+        return
+
+    if not (doc.mime_type == "application/pdf" or doc.file_name.lower().endswith(".pdf")):
+        await update.message.reply_text("Сейчас я поддерживаю только PDF-документы.")
+        return
+
+    file = await doc.get_file()
+    file_path = f"/tmp/{doc.file_unique_id}.pdf"
+    await file.download_to_drive(file_path)
+
+    await update.message.reply_text("Читаю PDF и отправляю в LLM для перевода и объяснения сути...")
+    raw_text = extract_pdf_text(file_path)
+
+    summarized = await abacus_client.summarize_pdf(raw_text, target_lang="ru")
+
+    mem_content = summarized
+    mem_resp = await mem_client.create_note(mem_content)
+    note_id = mem_resp.get("id") or mem_resp.get("noteId") or ""
+
+    USER_PENDING_NOTES[user_id] = PendingNote(
+        note_id=note_id,
+        original_content=mem_content,
+    )
+
+    await update.message.reply_text(
+        "Создал заметку по PDF в Mem.ai.\n"
         "Теперь отправь сообщение с тегами для этой заметки."
     )
 

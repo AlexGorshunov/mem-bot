@@ -43,6 +43,14 @@ def main() -> None:
         )
     )
 
+    # Документы (PDF)
+    application.add_handler(
+        MessageHandler(
+            filters.Document.PDF & ~filters.COMMAND,
+            handlers.handle_document,
+        )
+    )
+
     # Текст (и основной поток, и теги — роутер внутри handle_text)
     application.add_handler(
         MessageHandler(filters.TEXT & ~filters.COMMAND, handlers.handle_text)
