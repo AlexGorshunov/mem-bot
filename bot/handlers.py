@@ -15,6 +15,16 @@ from .pdf_utils import extract_pdf_text
 abacus_client = AbacusClient()
 mem_client = MemClient()
 
+# Единственный разрешённый username
+ALLOWED_USERNAME = "AlexGorshunov"
+
+
+def _is_authorized(update: Update) -> bool:
+    user = update.effective_user
+    if not user:
+        return False
+    return (user.username or "") == ALLOWED_USERNAME
+
 
 def _parse_tags(text: str) -> list[str]:
     # Разрешаем разделители: запятая, точка с запятой, перенос строки, пробел
@@ -32,6 +42,10 @@ def _parse_tags(text: str) -> list[str]:
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_authorized(update):
+        await update.message.reply_text("Ты не мой создатель, я тебя не знаю и не дружу с тобой!")
+        return
+
     await update.message.reply_text(
         "Привет! Я бот, который сохраняет твои мысли в Mem.ai.\n\n"
         "Отправь текст, голосовое или фото — я сохраню заметку, "
@@ -40,6 +54,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_authorized(update):
+        assert update.message is not None
+        await update.message.reply_text("Ты не мой создатель, я тебя не знаю и не дружу с тобой!")
+        return
+
     assert update.message is not None
     user_id = update.effective_user.id
     text = update.message.text or ""
@@ -68,6 +87,11 @@ async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_authorized(update):
+        assert update.message is not None
+        await update.message.reply_text("Ты не мой создатель, я тебя не знаю и не дружу с тобой!")
+        return
+
     assert update.message is not None
     user_id = update.effective_user.id
     voice = update.message.voice or update.message.audio
@@ -100,6 +124,11 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not _is_authorized(update):
+        assert update.message is not None
+        await update.message.reply_text("Ты не мой создатель, я тебя не знаю и не дружу с тобой!")
+        return
+
     assert update.message is not None
     user_id = update.effective_user.id
 
@@ -132,6 +161,11 @@ async def handle_document(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     Обработка PDF: скачиваем, вытаскиваем текст, просим LLM перевести и объяснить,
     создаём заметку в Mem и затем просим теги.
     """
+    if not _is_authorized(update):
+        assert update.message is not None
+        await update.message.reply_text("Ты не мой создатель, я тебя не знаю и не дружу с тобой!")
+        return
+
     assert update.message is not None
     user_id = update.effective_user.id
 
